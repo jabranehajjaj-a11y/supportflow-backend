@@ -108,10 +108,24 @@ app.get("/auth/shopify/callback", async (req, res) => {
     console.log("Access token:", accessToken);
 
     res.send(`
-      <h2>✅ SupportFlow Installed</h2>
-      <p>Store: ${shop}</p>
-      <p>You can close this window.</p>
-    `);
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Installed</title>
+    <script>
+      if (window.top !== window.self) {
+        window.top.location.href = "/";
+      }
+    </script>
+  </head>
+  <body>
+    <h2>✅ SupportFlow Installed</h2>
+    <p>You can close this tab.</p>
+  </body>
+</html>
+`);
+
   } catch (error) {
     console.error(error.response?.data || error.message);
     res.status(500).send("Failed to complete OAuth");
