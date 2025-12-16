@@ -11,8 +11,17 @@ const app = express();
 const PORT = process.env.PORT || 8080;
 
 app.use(cors());
-app.use(helmet());
+
+// IMPORTANT: allow Shopify iframe embedding
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    frameguard: false
+  })
+);
+
 app.use(express.json());
+
 
 // ============================
 // CONFIG
