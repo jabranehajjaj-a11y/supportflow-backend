@@ -10,9 +10,12 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 8080;
 
+// ============================
+// BASIC APP SETUP
+// ============================
+
 app.use(cors());
 
-// IMPORTANT: allow Shopify iframe embedding
 app.use(
   helmet({
     contentSecurityPolicy: false,
@@ -22,15 +25,44 @@ app.use(
 
 app.use(express.json());
 
+// ============================
+// ROOT PAGE (THIS FIXES "CANNOT GET")
+// ============================
+
+app.get("/", (req, res) => {
+  res.send(`
+    <html>
+      <head>
+        <title>SupportFlow AI</title>
+      </head>
+      <body style="font-family: Arial; padding: 40px;">
+        <h1>✅ SupportFlow AI</h1>
+        <p>The app is installed and running.</p>
+        <p>You can now close this window.</p>
+      </body>
+    </html>
+  `);
+});
 
 // ============================
-// CONFIG
+// HEALTH CHECK
 // ============================
+
+app.get("/health", (req, res) => {
+  res.json({
+    ok: true,
+    status: "SupportFlow backend running"
+  });
+});
+
+// ============================
+// SHOPIFY OAUTH – START
+// ============================
+
 const SHOPIFY_CLIENT_ID = process.env.SHOPIFY_CLIENT_ID;
 const SHOPIFY_CLIENT_SECRET = process.env.SHOPIFY_CLIENT_SECRET;
 const APP_URL = process.env.APP_URL;
 
-// Required scopes for MVP
 const SCOPES = [
   "read_orders",
   "write_orders",
@@ -39,16 +71,6 @@ const SCOPES = [
   "write_customers"
 ].join(",");
 
-// ============================
-// HEALTH CHECK
-// ============================
-app.get("/health", (req, res) => {
-  res.json({ ok: true, status: "SupportFlow backend running" });
-});
-
-// ============================
-// SHOPIFY OAUTH – STEP 1
-// ============================
 app.get("/auth/shopify", (req, res) => {
   const shop = req.query.shop;
   if (!shop) return res.status(400).send("Missing shop parameter");
@@ -66,16 +88,12 @@ app.get("/auth/shopify", (req, res) => {
   res.redirect(installUrl);
 });
 
-// ============================
-// SHOPIFY OAUTH – STEP 2
-// ============================
 app.get("/auth/shopify/callback", async (req, res) => {
   const { shop, code, hmac } = req.query;
   if (!shop || !code || !hmac) {
     return res.status(400).send("Missing OAuth parameters");
   }
 
-  // Verify HMAC
   const map = { ...req.query };
   delete map.hmac;
   delete map.signature;
@@ -91,7 +109,6 @@ app.get("/auth/shopify/callback", async (req, res) => {
   }
 
   try {
-    // Exchange code for access token
     const tokenResponse = await axios.post(
       `https://${shop}/admin/oauth/access_token`,
       {
@@ -101,41 +118,20 @@ app.get("/auth/shopify/callback", async (req, res) => {
       }
     );
 
-    const accessToken = tokenResponse.data.access_token;
-
-    // 🔒 TEMPORARY: log token (we'll store it properly next step)
     console.log("Installed shop:", shop);
-    console.log("Access token:", accessToken);
+    console.log("Access token:", tokenResponse.data.access_token);
 
-    res.send(`
-<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <title>Installed</title>
-    <script>
-      if (window.top !== window.self) {
-        window.top.location.href = "/";
-      }
-    </script>
-  </head>
-  <body>
-    <h2>✅ SupportFlow Installed</h2>
-    <p>You can close this tab.</p>
-  </body>
-</html>
-`);
-
+    res.redirect("/");
   } catch (error) {
     console.error(error.response?.data || error.message);
-    res.status(500).send("Failed to complete OAuth");
+    res.status(500).send("OAuth failed");
   }
 });
 
 // ============================
 // START SERVER
 // ============================
-app.listen(PORT, () => {
-  console.log(`SupportFlow backend running on port ${PORT}`);
-});
 
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
