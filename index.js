@@ -4,11 +4,21 @@ import helmet from "helmet";
 import dotenv from "dotenv";
 import crypto from "crypto";
 import axios from "axios";
+import { createClient } from "@supabase/supabase-js";
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 8080;
+
+// ============================
+// SUPABASE SETUP
+// ============================
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
 // ============================
 // BASIC APP SETUP
@@ -26,15 +36,13 @@ app.use(
 app.use(express.json());
 
 // ============================
-// ROOT PAGE (THIS FIXES "CANNOT GET")
+// ROOT PAGE
 // ============================
 
 app.get("/", (req, res) => {
   res.send(`
     <html>
-      <head>
-        <title>SupportFlow AI</title>
-      </head>
+      <head><title>SupportFlow AI</title></head>
       <body style="font-family: Arial; padding: 40px;">
         <h1>✅ SupportFlow AI</h1>
         <p>The app is installed and running.</p>
@@ -49,14 +57,11 @@ app.get("/", (req, res) => {
 // ============================
 
 app.get("/health", (req, res) => {
-  res.json({
-    ok: true,
-    status: "SupportFlow backend running"
-  });
+  res.json({ ok: true });
 });
 
 // ============================
-// SHOPIFY OAUTH – START
+// SHOPIFY OAUTH
 // ============================
 
 const SHOPIFY_CLIENT_ID = process.env.SHOPIFY_CLIENT_ID;
@@ -71,6 +76,7 @@ const SCOPES = [
   "write_customers"
 ].join(",");
 
+// Start install
 app.get("/auth/shopify", (req, res) => {
   const shop = req.query.shop;
   if (!shop) return res.status(400).send("Missing shop parameter");
@@ -88,6 +94,7 @@ app.get("/auth/shopify", (req, res) => {
   res.redirect(installUrl);
 });
 
+// OAuth callback
 app.get("/auth/shopify/callback", async (req, res) => {
   const { shop, code, hmac } = req.query;
   if (!shop || !code || !hmac) {
@@ -109,6 +116,7 @@ app.get("/auth/shopify/callback", async (req, res) => {
   }
 
   try {
+    // Exchange code for token
     const tokenResponse = await axios.post(
       `https://${shop}/admin/oauth/access_token`,
       {
@@ -118,8 +126,22 @@ app.get("/auth/shopify/callback", async (req, res) => {
       }
     );
 
-    console.log("Installed shop:", shop);
-    console.log("Access token:", tokenResponse.data.access_token);
+    const accessToken = tokenResponse.data.access_token;
+
+    // ✅ SAVE TO SUPABASE
+    const { error } = await supabase
+      .from("stores")
+      .upsert({
+        shop_domain: shop,
+        access_token: accessToken
+      });
+
+    if (error) {
+      console.error("Supabase error:", error.message);
+      return res.status(500).send("Failed to save store");
+    }
+
+    console.log("Store saved:", shop);
 
     res.redirect("/");
   } catch (error) {
