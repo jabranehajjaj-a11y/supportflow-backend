@@ -95,9 +95,15 @@ app.get("/auth/shopify", (req, res) => {
 });
 
 // OAuth callback
+// OAuth callback
 app.get("/auth/shopify/callback", async (req, res) => {
+  console.log("🔔 OAuth callback hit");
+
   const { shop, code, hmac } = req.query;
+  console.log("Query params:", req.query);
+
   if (!shop || !code || !hmac) {
+    console.error("❌ Missing OAuth parameters");
     return res.status(400).send("Missing OAuth parameters");
   }
 
@@ -112,11 +118,13 @@ app.get("/auth/shopify/callback", async (req, res) => {
     .digest("hex");
 
   if (generatedHash !== hmac) {
+    console.error("❌ HMAC validation failed");
     return res.status(401).send("HMAC validation failed");
   }
 
   try {
-    // Exchange code for token
+    console.log("🔑 Exchanging code for token...");
+
     const tokenResponse = await axios.post(
       `https://${shop}/admin/oauth/access_token`,
       {
@@ -127,6 +135,31 @@ app.get("/auth/shopify/callback", async (req, res) => {
     );
 
     const accessToken = tokenResponse.data.access_token;
+    console.log("✅ Got access token");
+
+    console.log("🗄 Saving store to Supabase:", shop);
+
+    const { error } = await supabase
+      .from("stores")
+      .upsert({
+        shop_domain: shop,
+        access_token: accessToken
+      });
+
+    if (error) {
+      console.error("❌ Supabase insert error:", error);
+      return res.status(500).send("Failed to save store");
+    }
+
+    console.log("✅ Store saved successfully");
+
+    res.redirect("/");
+  } catch (error) {
+    console.error("❌ OAuth error:", error.response?.data || error);
+    res.status(500).send("OAuth failed");
+  }
+});
+
 
     // ✅ SAVE TO SUPABASE
     const { error } = await supabase
