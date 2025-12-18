@@ -149,6 +149,65 @@ app.get("/auth/shopify/callback", async (req, res) => {
     res.status(500).send("OAuth failed");
   }
 });
+// ============================
+// ORDER LOOKUP (FIRST REAL FEATURE)
+// ============================
+
+app.post("/api/orders/lookup", async (req, res) => {
+  const { shop, orderName } = req.body;
+
+  if (!shop || !orderName) {
+    return res.status(400).json({
+      error: "Missing shop or orderName"
+    });
+  }
+
+  try {
+    // Get access token from Supabase
+    const { data, error } = await supabase
+      .from("stores")
+      .select("access_token")
+      .eq("shop_domain", shop)
+      .single();
+
+    if (error || !data) {
+      return res.status(404).json({ error: "Store not found" });
+    }
+
+    const accessToken = data.access_token;
+
+    // Call Shopify Orders API
+    const response = await axios.get(
+      `https://${shop}/admin/api/2024-01/orders.json?name=${orderName}`,
+      {
+        headers: {
+          "X-Shopify-Access-Token": accessToken
+        }
+      }
+    );
+
+    const order = response.data.orders[0];
+
+    if (!order) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+
+    // Return safe order info
+    res.json({
+      order: {
+        id: order.id,
+        name: order.name,
+        financial_status: order.financial_status,
+        fulfillment_status: order.fulfillment_status,
+        total_price: order.total_price,
+        created_at: order.created_at
+      }
+    });
+  } catch (err) {
+    console.error(err.response?.data || err.message);
+    res.status(500).json({ error: "Failed to fetch order" });
+  }
+});
 
 // ============================
 // START SERVER
